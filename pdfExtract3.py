@@ -2,11 +2,13 @@ import os.path
 import sys
 import math
 import openai
-#import PyCryptodome
+
+# import PyCryptodome
 from PyPDF2 import PdfReader
 import tkinter as tk
-from tkinter import filedialog 
+from tkinter import filedialog
 from tkinter import messagebox
+
 
 def uniquify(name, goalPath):
     filename, extension = os.path.splitext(name)
@@ -21,48 +23,80 @@ def uniquify(name, goalPath):
 
     return path
 
+
 def getTargetPDF():
     root = tk.Tk()
     root.withdraw()
 
-    messagebox.showinfo("Prompt","Please select a file to summarize")
+    messagebox.showinfo("Prompt", "Please select a file to summarize")
     file_path = filedialog.askopenfilename()
     return file_path
+
+
+def get_key():
+    global user_input  # Use global instead of nonlocal
+
+    def on_submit():
+        global user_input  # Now it's correctly referred to as global
+        user_input = entry.get()
+        window.quit()
+
+    window = tk.Tk()
+    window.title("Input Key")
+
+    tk.Label(window, text="Enter your GPT API key:").pack(pady=10)
+    entry = tk.Entry(window, width=40)
+    entry.pack(pady=10)
+
+    tk.Button(window, text="Submit", command=on_submit).pack(pady=10)
+
+    window.mainloop()
+    return user_input
 
 
 # Divide option and arguement inputs into two arrays
 opts = [opt for opt in sys.argv[1:] if opt.startswith("-")]
 args = [arg for arg in sys.argv[1:] if not arg.startswith("-")]
 
-pdfName = getTargetPDF()
-
 # Create an instance of the GPT-3 model
-openai.api_key = "!!! Your GPT Key Here !!!"
+# openai.api_key = "!!! Your GPT Key Here !!!"
+openai.api_key = get_key()
 
 # open the PDF file
-pdfFile = open(pdfName, 'rb')
+pdfName = getTargetPDF()
+pdfFile = open(pdfName, "rb")
 
 # create PDFFileReader object to read the file
 pdfReader = PdfReader(pdfFile)
-meta = pdfReader.metadata;
+meta = pdfReader.metadata
 
 # set max length of input to GPT3
-acceptableLengthGPT = 3297*2
+acceptableLengthGPT = 3297 * 2
 
 # set path of output summary file
-summaryPath = uniquify("summary of "+os.path.basename(pdfName).split(".")[0]+".txt", os.path.dirname(pdfName))
+summaryPath = uniquify(
+    "summary of " + os.path.basename(pdfName).split(".")[0] + ".txt",
+    os.path.dirname(pdfName),
+)
 
 # set document metadata
 documentData = "Document info:"
-if(meta is not None):
-    documentData = documentData +"\nAuthor: " + str(meta.author) +"\nTitle: " + str(meta.title)
-documentData = documentData+"\n- - - - - - - - - - - - - - - - - - - -"+"\nNumber of Pages: " + str(len(pdfReader.pages))
+if meta is not None:
+    documentData = (
+        documentData + "\nAuthor: " + str(meta.author) + "\nTitle: " + str(meta.title)
+    )
+documentData = (
+    documentData
+    + "\n- - - - - - - - - - - - - - - - - - - -"
+    + "\nNumber of Pages: "
+    + str(len(pdfReader.pages))
+)
 
 # display and save document metadata
 print(documentData)
-with open(summaryPath, 'a') as f:
-        # Write document metadata to the file
-        f.writelines(documentData)
+with open(summaryPath, "a") as f:
+    # Write document metadata to the file
+    f.writelines(documentData)
 
 numOfPages = len(pdfReader.pages)
 rawText = ""
@@ -76,24 +110,24 @@ for i in range(0, numOfPages):
 
 end = 0
 # send text to GPT3 in batches
-for i in range(0, math.floor(len(rawText)/acceptableLengthGPT)):
+for i in range(0, math.floor(len(rawText) / acceptableLengthGPT)):
     start = end
 
     # find end of batch
-    if(end+acceptableLengthGPT < len(rawText)):
-        end = end+acceptableLengthGPT
+    if end + acceptableLengthGPT < len(rawText):
+        end = end + acceptableLengthGPT
     else:
         end = len(rawText)
 
     # find index of last end of sentence in batch
     for j in range(0, acceptableLengthGPT):
-        if(rawText[end] == "."):
+        if rawText[end] == ".":
             end += 1
             break
         else:
             end -= 1
 
-    #print("Start and end indexed: "+rawText[start]+", "+rawText[end-1])
+    # print("Start and end indexed: "+rawText[start]+", "+rawText[end-1])
 
     # divide the text into lengths accepted by GPT3 (<3297 chars)
     targetText = rawText[start:end]
@@ -101,31 +135,32 @@ for i in range(0, math.floor(len(rawText)/acceptableLengthGPT)):
     # get which pages are currently being read from
     pages = []
     for j in range(0, numOfPages):
-        if(((i == 0 and j == 0) 
-            or (j > 0 and start <= pageEndIndices[j-1] + 1 < end)) 
-            or start <= pageEndIndices[j] < end):
-            pages.append(j+1)
+        if (
+            (i == 0 and j == 0) or (j > 0 and start <= pageEndIndices[j - 1] + 1 < end)
+        ) or start <= pageEndIndices[j] < end:
+            pages.append(j + 1)
 
     response = openai.Completion.create(
-    engine="text-davinci-003",
-    prompt="Summarize this text in the style of the New Yorker: " + targetText,
-    max_tokens=800,
-    n=1,
-    temperature=0.3,
-    presence_penalty=0.1,
-)
+        engine="text-davinci-003",
+        prompt="Summarize this text in the style of the New Yorker: " + targetText,
+        max_tokens=800,
+        n=1,
+        temperature=0.3,
+        presence_penalty=0.1,
+    )
 
     # Print the generated summary
-    print("\n\nPage(s) "+str(pages)+":\n"+response["choices"][0]["text"])
+    print("\n\nPage(s) " + str(pages) + ":\n" + response["choices"][0]["text"])
 
     # Open a text file for writing
-    with open(summaryPath, 'a', encoding="utf-8") as f:
+    with open(summaryPath, "a", encoding="utf-8") as f:
         # Write the list of bullet point summaries to the file
-        f.writelines("\n\nPage(s) "+str(pages)+":\n"+response["choices"][0]["text"])
+        f.writelines(
+            "\n\nPage(s) " + str(pages) + ":\n" + response["choices"][0]["text"]
+        )
 
 # close the PDF file object
 pdfFile.close()
 
 # open summary file
 os.startfile(summaryPath)
-
